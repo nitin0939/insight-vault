@@ -42,50 +42,50 @@ more complex half of this codebase.
 ```mermaid
 flowchart TB
     subgraph Browser
-        U[User]
+        U["User"]
     end
 
     subgraph "Spring Boot App"
-        SEC[Security Filter Chain<br/>form login + roles]
-        DC[DocumentController]
-        CC[ChatController]
-        AC[AdminController]
+        SEC["Security Filter Chain<br/>form login + roles"]
+        DC["DocumentController"]
+        CC["ChatController"]
+        AC["AdminController"]
 
-        DS[DocumentService]
-        STOR[DocumentStorageService]
-        IEL[IngestionEventListener<br/>@Async]
-        IP[IngestionProcessor]
-        EI[EmbeddingIndexer]
-        CS[ChatService]
+        DS["DocumentService"]
+        STOR["DocumentStorageService"]
+        IEL["IngestionEventListener<br/>Async listener"]
+        IP["IngestionProcessor"]
+        EI["EmbeddingIndexer"]
+        CS["ChatService"]
     end
 
     subgraph "Local / Free"
-        FS[(Local disk<br/>data/uploads)]
-        EMB[Local ONNX<br/>embedding model]
+        FS[("Local disk<br/>data/uploads")]
+        EMB["Local ONNX<br/>embedding model"]
     end
 
     subgraph "Postgres (Docker)"
-        PG[(pgvector extension<br/>HNSW index)]
+        PG[("pgvector extension<br/>HNSW index")]
     end
 
     subgraph "External"
-        GROQ[Groq API<br/>llama-3.1-8b-instant]
+        GROQ["Groq API<br/>llama-3.1-8b-instant"]
     end
 
-    U -->|1. upload file| SEC --> DC --> DS
-    DS -->|save bytes + checksum| STOR --> FS
-    DS -->|save metadata row| PG
-    DS -.->|publish DocumentUploadedEvent<br/>after commit| IEL
-    IEL -->|runs on ingestionExecutor<br/>thread pool| IP
-    IP -->|extract text, parallel per<br/>page range| IP
-    IP -->|token-based chunking| EI
-    EI -->|embed each chunk| EMB
-    EI -->|store vectors + metadata| PG
+    U -->|"1. upload file"| SEC --> DC --> DS
+    DS -->|"save bytes + checksum"| STOR --> FS
+    DS -->|"save metadata row"| PG
+    DS -.->|"publish DocumentUploadedEvent<br/>after commit"| IEL
+    IEL -->|"runs on ingestionExecutor<br/>thread pool"| IP
+    IP -->|"extract text, parallel per<br/>page range"| IP
+    IP -->|"token-based chunking"| EI
+    EI -->|"embed each chunk"| EMB
+    EI -->|"store vectors + metadata"| PG
 
-    U -->|2. ask question| SEC --> CC --> CS
-    CS -->|embed question,<br/>similarity search top-10| PG
-    CS -->|context + question| GROQ
-    GROQ -->|answer| CS --> U
+    U -->|"2. ask question"| SEC --> CC --> CS
+    CS -->|"embed question,<br/>similarity search top-10"| PG
+    CS -->|"context + question"| GROQ
+    GROQ -->|"answer"| CS --> U
 ```
 
 ### The two flows, in prose
@@ -136,35 +136,35 @@ sequenceDiagram
     participant DC as DocumentController
     participant DS as DocumentService
     participant Store as DocumentStorageService
-    participant DB as Postgres (knowledge_document)
+    participant DB as "Postgres (knowledge_document)"
     participant Listener as IngestionEventListener
     participant Proc as IngestionProcessor
-    participant PDFBox as PDFBox (N parallel page ranges)
+    participant PDFBox as "PDFBox (N parallel page ranges)"
     participant Splitter as TokenTextSplitter
     participant Idx as EmbeddingIndexer
-    participant ONNX as Local ONNX model
-    participant PG as pgvector table
+    participant ONNX as "Local ONNX model"
+    participant PG as "pgvector table"
 
     User->>DC: POST /documents/upload (multipart)
     DC->>DS: upload(file, username)
     DS->>Store: store(file)
-    Store-->>DS: StoredDocument(path, sha256 checksum)
+    Store-->>DS: StoredDocument (path, sha256 checksum)
     DS->>DB: INSERT knowledge_document (status=UPLOADED)
     DS-->>DC: documentId
     DC-->>User: redirect /documents ("ingestion started")
     Note over DS,DB: transaction commits here
     DS->>Listener: DocumentUploadedEvent (AFTER_COMMIT)
-    Listener->>Proc: process(documentId)  [runs on ingestionExecutor]
+    Listener->>Proc: process(documentId), runs on ingestionExecutor
     Proc->>DB: UPDATE status=PROCESSING
     par one worker per page range
-        Proc->>PDFBox: extract pages [start..end]
+        Proc->>PDFBox: extract pages start to end
         PDFBox-->>Proc: per-page text
     end
     Proc->>Splitter: split each page into token-sized chunks
-    Splitter-->>Proc: List<chunk text>
+    Splitter-->>Proc: list of chunk strings
     Proc->>Idx: index(document, chunks)
     Idx->>ONNX: embed(chunk batch)
-    ONNX-->>Idx: float[] vector per chunk
+    ONNX-->>Idx: float array vector per chunk
     Idx->>PG: INSERT vectors + metadata
     Proc->>DB: UPDATE status=READY, chunkCount=N
 ```
@@ -261,27 +261,27 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TD
-    Start([Visit the site]) --> Auth{Authenticated?}
+    Start(["Visit the site"]) --> Auth{"Authenticated?"}
     Auth -- no --> Login["/login form"]
-    Login -->|DatabaseUserDetailsService<br/>+ BCrypt password check| Auth
+    Login -->|"DatabaseUserDetailsService<br/>plus BCrypt password check"| Auth
     Auth -- yes --> Home["/home"]
 
     Home --> Docs["Documents list<br/>(own docs, or all if ADMIN)"]
     Home --> Chat["Chat page"]
-    Home -->|ADMIN only| Stats["Admin Statistics"]
+    Home -->|"ADMIN only"| Stats["Admin Statistics"]
 
     Docs --> Upload["Upload page"]
-    Upload -->|POST multipart, one row<br/>+ file per selected document| Uploading["status = UPLOADED"]
-    Uploading -.->|ingestion runs in the<br/>background, see section 3| Docs
+    Upload -->|"POST multipart, one row<br/>plus file per selected document"| Uploading["status = UPLOADED"]
+    Uploading -.->|"ingestion runs in the<br/>background, see section 3"| Docs
 
     Docs --> Details["Document details:<br/>status, chunk count, failure reason"]
     Docs --> Search["Filter own/all docs by filename"]
 
     Chat --> Ask["Ask a question"]
-    Ask -->|similarity search, topK=10| Answer["Answer + source filenames"]
+    Ask -->|"similarity search, topK=10"| Answer["Answer + source filenames"]
 
-    Docs -->|ADMIN sees per-row actions| Delete["Delete document<br/>(vectors + DB row + file)"]
-    Docs -->|ADMIN sees per-row actions| Reprocess["Reprocess document<br/>(re-run ingestion, see section 3)"]
+    Docs -->|"ADMIN sees per-row actions"| Delete["Delete document<br/>(vectors + DB row + file)"]
+    Docs -->|"ADMIN sees per-row actions"| Reprocess["Reprocess document<br/>(re-run ingestion, see section 3)"]
 ```
 
 ### Walking through it, with the concept behind each step
