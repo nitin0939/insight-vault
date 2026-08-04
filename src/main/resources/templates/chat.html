@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="_csrf" th:content="${_csrf.token}" />
+    <meta name="_csrf_header" th:content="${_csrf.headerName}" />
+    <title>Insight Vault | Chat</title>
+    <link rel="stylesheet" th:href="@{/css/application.css}" />
+</head>
+<body>
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="brand-block">
+                <div class="brand-mark">IV</div>
+                <div>
+                    <div class="brand-name">Insight Vault</div>
+                    <div class="brand-subtitle">Knowledge chat</div>
+                </div>
+            </div>
+
+            <nav class="nav">
+                <a class="nav-link" th:href="@{/home}">Overview</a>
+                <a class="nav-link" th:href="@{/documents}">Documents</a>
+                <a class="nav-link" th:href="@{/documents/upload}">Upload</a>
+                <a class="nav-link active" th:href="@{/chat}">Chat</a>
+                <a class="nav-link" th:href="@{/admin/statistics}" sec:authorize="hasRole('ADMIN')">Statistics</a>
+            </nav>
+
+            <div class="user-block">
+                <form th:action="@{/logout}" method="post" class="inline-form">
+                    <button type="submit" class="link-button">Logout</button>
+                </form>
+            </div>
+        </header>
+
+        <main class="main-panel">
+            <section class="card chat-card">
+                <div class="section-header">
+                    <div>
+                        <p class="eyebrow">Ask your knowledge base</p>
+                        <h1>Document chat</h1>
+                    </div>
+                </div>
+
+                <div id="chat-window" class="chat-window">
+                    <div class="chat-message assistant">
+                        <div class="chat-bubble">Ask a question about your uploaded documents and I'll answer using their content.</div>
+                    </div>
+                </div>
+
+                <form id="chat-form" class="chat-form">
+                    <input id="chat-input" type="text" placeholder="Ask a question about your documents..." autocomplete="off" required />
+                    <button type="submit" class="button primary">Send</button>
+                </form>
+            </section>
+        </main>
+    </div>
+
+    <script th:inline="javascript">
+        const chatWindow = document.getElementById('chat-window');
+        const chatForm = document.getElementById('chat-form');
+        const chatInput = document.getElementById('chat-input');
+        const csrfToken = document.querySelector('meta[name="_csrf"]').content;
+        const csrfHeader = document.querySelector('meta[name="_csrf_header"]').content;
+
+        function appendMessage(role, text) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'chat-message ' + role;
+            const bubble = document.createElement('div');
+            bubble.className = 'chat-bubble';
+            bubble.textContent = text;
+            wrapper.appendChild(bubble);
+            chatWindow.appendChild(wrapper);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+            return wrapper;
+        }
+
+        function appendSources(wrapper, sources) {
+            if (!sources || sources.length === 0) {
+                return;
+            }
+            const sourcesEl = document.createElement('div');
+            sourcesEl.className = 'chat-sources';
+            sourcesEl.textContent = 'Sources: ' + sources.join(', ');
+            wrapper.appendChild(sourcesEl);
+        }
+
+        chatForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const question = chatInput.value.trim();
+            if (!question) {
+                return;
+            }
+
+            appendMessage('user', question);
+            chatInput.value = '';
+            chatInput.disabled = true;
+            const thinkingBubble = appendMessage('assistant', 'Thinking...');
+
+            try {
+                const response = await fetch('/chat/ask', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [csrfHeader]: csrfToken
+                    },
+                    body: JSON.stringify({ question })
+                });
+
+                const data = await response.json();
+                thinkingBubble.querySelector('.chat-bubble').textContent = data.answer;
+                if (response.ok) {
+                    appendSources(thinkingBubble, data.sources);
+                } else {
+                    thinkingBubble.classList.add('error');
+                }
+            } catch (error) {
+                thinkingBubble.querySelector('.chat-bubble').textContent = 'Something went wrong reaching the chat service.';
+                thinkingBubble.classList.add('error');
+            } finally {
+                chatInput.disabled = false;
+                chatInput.focus();
+            }
+        });
+    </script>
+</body>
+</html>

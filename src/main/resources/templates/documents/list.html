@@ -21,6 +21,7 @@
                 <a class="nav-link" th:href="@{/home}">Overview</a>
                 <a class="nav-link active" th:href="@{/documents}">Documents</a>
                 <a class="nav-link" th:href="@{/documents/upload}">Upload</a>
+                <a class="nav-link" th:href="@{/chat}">Chat</a>
                 <a class="nav-link" th:href="@{/admin/statistics}" sec:authorize="hasRole('ADMIN')">Statistics</a>
             </nav>
 
@@ -72,6 +73,9 @@
                                 <td>
                                     <div class="row-actions">
                                         <a class="table-link" th:href="@{/documents/{id}(id=${document.id})}">Open</a>
+                                        <form sec:authorize="hasRole('ADMIN')" th:action="@{/admin/documents/{id}/reprocess(id=${document.id})}" method="post" class="inline-operate-form" onsubmit="return confirm('Re-run ingestion and re-index this document?');">
+                                            <button type="submit" class="button secondary">Reprocess</button>
+                                        </form>
                                         <form sec:authorize="hasRole('ADMIN')" th:action="@{/admin/documents/{id}/delete(id=${document.id})}" method="post" class="inline-operate-form" onsubmit="return confirm('Delete this document completely?');">
                                             <button type="submit" class="delete-button">Delete</button>
                                         </form>
