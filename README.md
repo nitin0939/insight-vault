@@ -355,7 +355,67 @@ flowchart TD
 
 ---
 
-## 6. Project layout
+## 6. Frontend / UI
+
+There's no separate frontend project here — no `package.json`, no bundler, no SPA
+framework. The whole UI is server-rendered and ships inside the same Spring Boot jar.
+
+| Layer | Technology | Where |
+|---|---|---|
+| Templating | **Thymeleaf** (`spring-boot-starter-thymeleaf`) | `src/main/resources/templates/*.html` |
+| Role-aware rendering | **thymeleaf-extras-springsecurity6** (`sec:authorize`) | e.g. hiding the Statistics nav link from non-admins |
+| Interactivity | Plain **vanilla JavaScript**, inline `<script>` per page — no framework, no build step | `chat.html`, `documents/upload.html` |
+| Styling | One hand-written **CSS file** using custom properties as design tokens — no Bootstrap/Tailwind | `static/css/application.css` (~650 lines) |
+
+### Concepts behind the frontend choices
+
+- **Server-side rendering (MPA), not a SPA.** Every nav link (`Overview`, `Documents`,
+  `Upload`, `Chat`, `Statistics`) is a full page navigation: the browser requests a URL,
+  a `@Controller` method builds a `Model` and returns a Thymeleaf view name, and
+  Thymeleaf renders complete HTML server-side. *Concept:* this is the classic
+  Multi-Page Application model — simpler and more resilient than a single-page app
+  (nothing to hydrate, no client-side router, works with JavaScript disabled for every
+  page except Chat) at the cost of a full page reload per navigation.
+- **One exception: the chat widget is a small SPA-like island.** `chat.html` doesn't
+  reload the page per message — its inline script does `fetch('/chat/ask', ...)`,
+  appends the user's question and the JSON response to the DOM directly, and manages
+  its own "Thinking..." placeholder state. *Concept:* progressive enhancement in
+  reverse — most of the app is plain server-rendered pages, with JavaScript reserved
+  for the one interaction (a conversational back-and-forth) that genuinely needs it.
+- **CSRF handling for the one AJAX call.** Spring Security's CSRF protection is on by
+  default for a session-based app like this one. Regular `<form method="post">`
+  submissions (upload, logout) don't need any special handling — Thymeleaf's Spring
+  Security integration inserts the CSRF token as a hidden field automatically. The
+  `fetch()`-based chat call can't rely on that, so `chat.html` renders the token and
+  header name into `<meta>` tags server-side and its script reads them into a request
+  header before calling `fetch`. *Concept:* CSRF tokens protect state-changing
+  requests from being forged by a different site — anything that bypasses normal form
+  submission (like a manual `fetch`) has to carry the token explicitly.
+- **Progressive enhancement on the upload page.** The `<input type="file" multiple>`
+  in `documents/upload.html` already works with zero JavaScript — the browser's native
+  file picker and the plain multipart form submission are enough to upload. The inline
+  script only adds a "selected files" preview list on top of that, purely cosmetic;
+  disabling JavaScript would still let you upload documents, just without the preview.
+- **Role-conditional rendering is cosmetic, not the security boundary.**
+  `sec:authorize="hasRole('ADMIN')"` hides the *Statistics* link in the nav for
+  non-admins, but hiding a link is not what stops a non-admin from reaching
+  `/admin/statistics` directly — that's enforced independently server-side by
+  `SecurityConfiguration`'s URL matcher and `@PreAuthorize` (see section 4). *Concept:*
+  never rely on hiding a UI element as your actual access control.
+- **Design tokens via CSS custom properties.** `application.css` defines its whole dark
+  color palette once at the top (`--bg`, `--primary`, `--success`, `--danger`, etc.) and
+  every page/component (`.card`, `.button.primary`, `.stat-card`, `.chat-bubble`,
+  `.dropzone`) reuses those variables instead of hardcoding colors. *Concept:* this is a
+  lightweight, framework-free version of what a design system gives you — one place to
+  change the palette, consistent look across every server-rendered page.
+- **No build pipeline.** Static assets under `src/main/resources/static/` are served
+  as-is by Spring Boot's built-in static resource handling — there's no `npm install`,
+  no transpilation, no minification step. What's on disk is exactly what the browser
+  receives.
+
+---
+
+## 7. Project layout
 
 ```
 src/main/java/.../insightvault/
@@ -366,11 +426,15 @@ src/main/java/.../insightvault/
 ├── models/         # DTOs, enums (DocumentStatus, RoleName), events
 ├── models/entity/  # JPA entity (KnowledgeDocument)
 └── repository/     # Spring Data JPA repositories
+
+src/main/resources/
+├── templates/      # Thymeleaf views (login, home, documents/*, chat, admin/statistics)
+└── static/css/     # application.css — the whole design system, one file
 ```
 
 ---
 
-## 7. Running it locally
+## 8. Running it locally
 
 ### Prerequisites
 - Java 21
@@ -426,7 +490,7 @@ storage stats.
 
 ---
 
-## 8. Quick glossary (for the "wait, what was that again?" moment)
+## 9. Quick glossary (for the "wait, what was that again?" moment)
 
 - **RAG (Retrieval-Augmented Generation)** — answering questions by retrieving relevant
   private text and feeding it to an LLM as context, instead of relying on the model's
